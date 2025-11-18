@@ -179,7 +179,8 @@ def define_running_cost_and_dynamics(opti, X, U, S, W, N, dt, x_init,
         
     return cost
 
-def define_terminal_cost_and_constraints(opti, X, S, c_path, r_path, w_final):
+def define_terminal_cost_and_constraints(opti, X, S, c_path, r_path, w_final, x_init):
+    w_final = 2
     # TODO: Compute the end-effector position at the final state
     x_last = X[-1]
     x_last_q = x_last[:nq] #last joint angles
@@ -191,7 +192,22 @@ def define_terminal_cost_and_constraints(opti, X, S, c_path, r_path, w_final):
     # TODO: Constrain ee_pos to lie on the desired path in x, y, z at the end
     opti.subject_to(ee_pos_final == path_end)
 
+    x0 = X[0]
+    xN = X[-1]
+
+    # Convert x_init (numpy) to CasADi constant once
+    x_init_cs = cs.DM(x_init)
+
+    # Here we penalize deviation of BOTH the initial and final states from x_init.
+    # The term on x0 is actually zero if you keep the hard constraint X[0] == x_init,
+    # but it keeps the formula symmetric and is harmless.
     cost = 0
+    cost += w_final * cs.sumsqr(x0 - x_init_cs)
+    cost += w_final * cs.sumsqr(xN - x_init_cs)
+
+    #opti.subject_to(x0 == x_init_cs) hard constraints infeasible solution
+    #opti.subject_to(xN == x_init_cs)
+
     return cost
 
 
@@ -203,7 +219,7 @@ def create_and_solve_ocp(N, nx, nq, lbx, ubx, dt, x_init,
     running_cost = define_running_cost_and_dynamics(opti, X, U, S, W, N, dt, x_init,
                                                     c_path, r_path, w_v, w_a, w_w,
                                                     tau_min, tau_max)
-    terminal_cost = define_terminal_cost_and_constraints(opti, X, S, c_path, r_path, w_final)
+    terminal_cost = define_terminal_cost_and_constraints(opti, X, S, c_path, r_path, w_final, x_init)
     opti.minimize(running_cost + terminal_cost)
 
     opts = {"ipopt.print_level": 0, "print_time": 0, "ipopt.tol": 1e-4}
